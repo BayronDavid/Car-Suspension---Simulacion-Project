@@ -25,7 +25,7 @@
 		'use strict';
 		
 		Physijs.scripts.worker = '../physijs_worker.js';
-		Physijs.scripts.ammo = 'examples/js/ammo.js';
+		Physijs.scripts.ammo = 'src/js/ammo.js';
 		
 		var initScene, render,NoiseGen, ground_material,ground_geometry,pointLight,
 			ground_material, box_material, 
@@ -172,6 +172,7 @@
 						10.5,
 						6000
 					));
+					console.log(vehicle);
 					scene.add( vehicle );
 	
 					var wheel_material = new THREE.MeshFaceMaterial( wheel_materials );
@@ -187,7 +188,7 @@
 							),
 							new THREE.Vector3( 0, -1, 0 ),
 							new THREE.Vector3( -1, 0, 0 ),
-							2,
+							1.111,
 							0.7,
 							i < 2 ? false : true
 						);
@@ -269,7 +270,7 @@
 		
 		</script>
 	
-		<script type="text/javascript">
+		<!-- <script type="text/javascript">
 		var obj = {
 			message: 'Hello World',
 			displayOutline: false,
@@ -327,7 +328,7 @@
 		};
 		gui.add(obj, 'Button with a long description');
 	
-		  </script>
+		  </script> -->
 </body>
 
 </html>
