@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+	<title>Rigid body - Physijs</title>
+	
+	<link rel="stylesheet" type="text/css" href="css/styles.css" />
+	<!-- Threejs -->
+	<script type="text/javascript" src="js/three.min.js"></script>
+	<!-- Physijs -->
+	<script type="text/javascript" src="js/stats.js"></script>
+	<script type="text/javascript" src="js/simplex-noise.js"></script>
+	<script type="text/javascript" src="../physi.js"></script>
+	<script type="text/javascript" src="js/tween.js"></script>
+	<!-- Dat gui -->
+	<script type="text/javascript" src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.js"></script>
+</head>
+
+<body>
+	<div id="viewport"></div>
+
+	<script type="text/javascript">
+	
+		'use strict';
+		
+		Physijs.scripts.worker = '../physijs_worker.js';
+		Physijs.scripts.ammo = 'src/js/ammo.js';
+		
+		var initScene, render,NoiseGen, ground_material,ground_geometry,pointLight,
+			ground_material, box_material, 
+			renderer, render_stats, physics_stats, scene, ground, light, camera,
+				vehicle_body, vehicle, loader;
+		
+		initScene = function() {
+			TWEEN.start();
+	
+			renderer = new THREE.WebGLRenderer({ antialias: true });
+			renderer.setSize( window.innerWidth, window.innerHeight );
+			renderer.shadowMap.enabled = true;
+			renderer.shadowMapSoft = true;
+			document.getElementById( 'viewport' ).appendChild( renderer.domElement );
+			
+			render_stats = new Stats();
+			render_stats.domElement.style.position = 'absolute';
+			render_stats.domElement.style.top = '1px';
+			render_stats.domElement.style.zIndex = 100;
+			document.getElementById( 'viewport' ).appendChild( render_stats.domElement );
+	
+			physics_stats = new Stats();
+			physics_stats.domElement.style.position = 'absolute';
+			physics_stats.domElement.style.top = '50px';
+			physics_stats.domElement.style.zIndex = 100;
+			document.getElementById( 'viewport' ).appendChild( physics_stats.domElement );
+			
+			scene = new Physijs.Scene;
+			scene.setGravity(new THREE.Vector3( 0, -30, 0 ));
+			scene.addEventListener(
+				'update',
+				function() {
+	
+					if ( input && vehicle ) {
+						if ( input.direction !== null ) {
+							input.steering += input.direction / 50;
+							if ( input.steering < -.6 ) input.steering = -.6;
+							if ( input.steering > .6 ) input.steering = .6;
+						}
+						vehicle.setSteering( input.steering, 0 );
+						vehicle.setSteering( input.steering, 1 );
+	
+						if ( input.power === 1 ) {
+							vehicle.applyEngineForce( 300 );
+						} else if ( input.power === 2 ) {
+							vehicle.applyEngineForce( -300 );
+						} else if ( input.power === 3 ) {
+							vehicle.setBrake( 20, 2 );
+							vehicle.setBrake( 20, 3 );
+	
+						} else {
+							vehicle.applyEngineForce( 0 );
+						}
+					}
+	
+					scene.simulate( undefined, 2 );
+					physics_stats.update();
+				}
+			);
+			
+			camera = new THREE.PerspectiveCamera(
+				35,
+				window.innerWidth / window.innerHeight,
+				1,
+				1000
+			);
+			scene.add( camera );
+			
+			// Light
+			light = new THREE.DirectionalLight( 0xFFFFFF );
+			light.position.set( 20, 40, -15 );
+			light.target.position.copy( scene.position );
+			light.castShadow = true;
+			light.shadowCameraLeft = -60;
+			light.shadowCameraTop = -60;
+			light.shadowCameraRight = 60;
+			light.shadowCameraBottom = 60;
+			light.shadowCameraNear = 20;
+			light.shadowCameraFar = 200;
+			light.shadowBias = -.0001
+			light.shadowMapWidth = light.shadowMapHeight = 2048;
+			light.shadowDarkness = .7;
+			scene.add( light );
+	
+			pointLight = new THREE.PointLight( 0xffffff, 1, 400 );
+			pointLight.position.y  = 5;
+			scene.add( pointLight );
+	
+			var input;
+	
+			// Loader
+			loader = new THREE.TextureLoader();
+			
+			// Materials
+			ground_material = Physijs.createMaterial(
+				new THREE.MeshLambertMaterial({ map: loader.load( 'images/grass.png' ) }),
+				.8, // high friction
+				.4 // low restitution
+			);
+			ground_material.map.wrapS = ground_material.map.wrapT = THREE.RepeatWrapping;
+			ground_material.map.repeat.set( 12, 12 );
+			
+			// Ground
+			NoiseGen = new SimplexNoise;
+			
+			ground_geometry = new THREE.PlaneGeometry( 300, 300, 50, 50 );
+			for ( var i = 0; i < ground_geometry.vertices.length; i++ ) {
+				var vertex = ground_geometry.vertices[i];
+				vertex.z = NoiseGen.noise( vertex.x / 40, vertex.y / 40 ) * 2;
+			}
+			ground_geometry.computeFaceNormals();
+			ground_geometry.computeVertexNormals();
+			
+			// If your plane is not square as far as face count then the HeightfieldMesh
+			// takes two more arguments at the end: # of x faces and # of y faces that were passed to THREE.PlaneMaterial
+			ground = new Physijs.HeightfieldMesh(
+				ground_geometry,
+				ground_material,
+				0, // mass
+				50,
+				50
+			);
+			ground.rotation.x = Math.PI / -2;
+			ground.receiveShadow = true;
+			scene.add( ground );
+	
+	
+			var json_loader = new THREE.JSONLoader();
+	
+			json_loader.load( "models/mustang.js", function( car, car_materials ) {
+				json_loader.load( "models/mustang_wheel.js", function( wheel, wheel_materials ) {
+					
+					for (var index = 0; index < car.vertices.length; index++) {
+                    car.vertices[index].x *= 3.0;
+                    car.vertices[index].y *= 3.0;
+                    car.vertices[index].z *= 3.0;
+                	}
+					
+					var mesh = new Physijs.BoxMesh(
+						car,
+						new THREE.MeshFaceMaterial( car_materials )
+					);
+					mesh._physijs.height *= 0.65;
+					mesh.position.y = 2;
+					mesh.castShadow = mesh.receiveShadow = true;
+	
+					vehicle = new Physijs.Vehicle(mesh, new Physijs.VehicleTuning(
+						30,
+						1,
+						0.2,
+						500,
+						10.5,
+						6000
+					));
+					console.log(vehicle);
+					scene.add( vehicle );
+	
+					var wheel_material = new THREE.MeshFaceMaterial( wheel_materials );
+	
+					for ( var i = 0; i < 4; i++ ) {
+						vehicle.addWheel(
+							wheel,
+							wheel_material,
+							new THREE.Vector3(
+									i % 2 === 0 ? -1.6 : 1.6,
+									-1,
+									i < 2 ? 3.3 : -3.2
+							),
+							new THREE.Vector3( 0, -1, 0 ),
+							new THREE.Vector3( -1, 0, 0 ),
+							1.111,
+							0.7,
+							i < 2 ? false : true
+						);
+					}
+	
+					input = {
+						power: null,
+						direction: null,
+						steering: 0
+					};
+					document.addEventListener('keydown', function( ev ) {
+						switch ( ev.keyCode ) {
+							case 32: // stop
+								input.power = 3;
+								break;
+							case 37: // left
+								input.direction = 1;
+								break;
+	
+							case 38: // forward
+								input.power = 1;
+								break;
+	
+							case 39: // right
+								input.direction = -1;
+								break;
+	
+							case 40: // back
+								input.power = 2;
+								break;
+						}
+					});
+					document.addEventListener('keyup', function( ev ) {
+						switch ( ev.keyCode ) {
+							case 32: // stop
+								input.power = null;
+								break;
+							case 37: // left
+								input.direction = null;
+								break;
+	
+							case 38: // forward
+								input.power = null;
+								break;
+	
+							case 39: // right
+								input.direction = null;
+								break;
+	
+							case 40: // back
+								input.power = null;
+								break;
+						}
+					});
+				});
+			});
+	
+			requestAnimationFrame( render );
+			scene.simulate();
+		};
+		
+		render = function() {
+			requestAnimationFrame( render );
+			if ( vehicle ) {
+				camera.position.copy( vehicle.mesh.position ).add( new THREE.Vector3( 40, 25, 40 ) );
+				camera.lookAt( vehicle.mesh.position );
+				
+				light.target.position.copy( vehicle.mesh.position );
+				light.position.addVectors( light.target.position, new THREE.Vector3( 20, 20, -15 ) );
+				
+				pointLight.position.x = vehicle.mesh.position.x ;
+				pointLight.position.z = vehicle.mesh.position.z ;
+			}
+			renderer.render( scene, camera );
+			render_stats.update();
+		};
+	
+		window.onload = initScene;
+		
+		</script>
+	
+		<!-- <script type="text/javascript">
+		var obj = {
+			message: 'Hello World',
+			displayOutline: false,
+	
+			maxSize: 6.0,
+			speed: 5,
+	
+			height: 10,
+			noiseStrength: 10.2,
+			growthSpeed: 0.2,
+	
+			type: 'three',
+	
+			explode: function () {
+			  alert('Bang!');
+			},
+	
+			color0: "#ffae23", // CSS string
+			color1: [ 0, 128, 255 ], // RGB array
+			color2: [ 0, 128, 255, 0.3 ], // RGB with alpha
+			color3: { h: 350, s: 0.9, v: 0.3 } // Hue, saturation, value
+		};
+	
+		var gui = new dat.gui.GUI();
+	
+		gui.remember(obj);
+	
+		gui.add(obj, 'message');
+		gui.add(obj, 'displayOutline');
+		gui.add(obj, 'explode');
+	
+		gui.add(obj, 'maxSize').min(-10).max(10).step(0.25);
+		gui.add(obj, 'height').step(5); // Increment amount
+	
+		// Choose from accepted values
+		gui.add(obj, 'type', [ 'one', 'two', 'three' ] );
+	
+		// Choose from named values
+		gui.add(obj, 'speed', { Stopped: 0, Slow: 0.1, Fast: 5 } );
+	
+		var f1 = gui.addFolder('Colors');
+		f1.addColor(obj, 'color0');
+		f1.addColor(obj, 'color1');
+		f1.addColor(obj, 'color2');
+		f1.addColor(obj, 'color3');
+	
+		var f2 = gui.addFolder('Another Folder');
+		f2.add(obj, 'noiseStrength');
+	
+		var f3 = f2.addFolder('Nested Folder');
+		f3.add(obj, 'growthSpeed');
+	
+		obj['Button with a long description'] = function () {
+		  console.log('Button with a long description pressed');
+		};
+		gui.add(obj, 'Button with a long description');
+	
+		  </script> -->
+</body>
+
+</html>
